@@ -1,5 +1,5 @@
 // cTech RLV(a) quick access
-#define DEBUG 
+// #define DEBUG 
 
 integer gi_flag;
 #define ATTACHED 0x1
@@ -60,6 +60,9 @@ integer gi_flag;
 
 #define COLOR_WORN <0.224, 0.800, 0.800>
 #define COLOR_NORMAL <0.067, 0.067, 0.067>
+
+#define COLOR_LOCK <0, 1, 0>
+#define COLOR_UNLOCK <1, 0, 0>
 
 #define PARAMS_SLIDE 14
 
@@ -196,27 +199,31 @@ open(integer open)
 lock (integer lock) 
 {
     string text = "y";
-    vector color = <1,0,0>;
-    string sound = UNLOCK_SOUND;
+    vector color = COLOR_UNLOCK;
+    string sound;
 
-    gi_flag = (gi_flag & ~LOCK) | (-bool(lock) & LOCK);
+    if (lock && ~gi_flag & LOCK)
+        sound = LOCK_SOUND;
+    else if (!lock && gi_flag & LOCK)
+        sound = UNLOCK_SOUND;
 
     if (lock) 
     {
         text = "n";
-        color = <0,1,0>;
-        sound = LOCK_SOUND;
+        color = COLOR_LOCK;
     }
 
-    llOwnerSay( "@detach=" + text );
+    if (gi_flag & RLV_LOGGED)
+        llOwnerSay( "@detach=" + text );
     llSetColor( color, ALL_SIDES );
-    llPlaySound( sound, SOUND_VOLUME);
+    if (sound) llPlaySound( sound, SOUND_VOLUME);
+    gi_flag = (gi_flag & ~LOCK) | (-bool(lock) & LOCK);
 }
 
 integer data_by_folder(string folder) 
 {
     folder = json_escape(folder);
-    integer len = gi_fold_numb;
+    integer len = llGetListLength(gj_worn_info);
     while (len)
     {
         string obj = llList2String(gj_worn_info, --len);
@@ -229,7 +236,7 @@ integer data_by_folder(string folder)
 
 stat_up()
 {
-    gi_flag = (gi_flag & ~(ATTACH_BOTTOM | LOCK | OPEN)) | (-bool(gi_att_point) & ATTACHED);
+    gi_flag = (gi_flag & ~(ATTACH_BOTTOM | OPEN)) | (-bool(gi_att_point) & ATTACHED);
     
     vector pos = llGetLocalPos();
     float root_half = (gv_root_size.y * 0.5);
@@ -314,6 +321,7 @@ default
     state_entry()
     {
         llSetTimerEvent(0);
+        lock (FALSE);
         gi_att_point = llGetAttached();
         if (!gi_att_point) state off;
 
@@ -323,6 +331,7 @@ default
     on_rez( integer start_param)
     {
         llSetTimerEvent(0);
+        lock (FALSE);
         gi_att_point = llGetAttached();
         if (!gi_att_point) state off;
     }
@@ -333,7 +342,7 @@ default
         if (id) 
         {
             if (gs_wearer == id) 
-                llSleep(15);
+                llSleep(10);
             stat_up();
         }
         else
