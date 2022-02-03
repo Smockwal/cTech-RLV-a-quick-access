@@ -1,5 +1,5 @@
 // cTech RLV(a) quick access
-//#define DEBUG 
+#define DEBUG 
 
 integer gi_flag;
 #define ATTACHED 0x1
@@ -92,9 +92,10 @@ list gl_open_params;
 integer gi_login_try;
 string gs_root_path;
 integer gi_fold_numb;
-string gj_worn_info;
+list gj_worn_info;
 list gl_worn_info;
 string gs_reapeat;
+string gs_folder_print;
 
 // CHAT
 integer gi_listen_handle;
@@ -119,44 +120,61 @@ print_flag()
 }
 #endif
 
-string json_escape(string str) 
+string json_escape(string str)
 {
-	list esc_char = ["%5b", "%5d", "%7b", "%7d", "%27", "%22", "%3A"];
-	integer len = 7;
-	while(len) 
+    list esc_char = ["%5b", "%5d", "%7b", "%7d", "%27", "%22", "%3A"];
+    integer len = 7;
+    while(len)
     {
-		string char = llEscapeURL(llList2String(esc_char, --len));
-		str = llDumpList2String(llParseStringKeepNulls(str, (list)char, []), llList2String(esc_char, len));
-	}
-	return llEscapeURL(str);
+        string char = llEscapeURL(llList2String(esc_char, --len));
+        str = llDumpList2String(llParseStringKeepNulls(str, (list)char, []), llList2String(esc_char, len));
+    }
+    return str;
 }
 
-set_text(string skey)
+send_rlv_cmd(string cmd)
 {
+    llListenControl(gi_listen_handle, TRUE);
+    llSleep(TIMER_MIN_TIME);
+    llOwnerSay(cmd);
+}
+
+set_text(integer index)
+{
+    string obj = llList2String(gj_worn_info, index);
+
     vector color = COLOR_NORMAL;
-    if (llJsonGetValue(gj_worn_info, [skey, JSON_WORN]) == "1")
+    if (llJsonGetValue(obj, (list)JSON_WORN) == "1")
         color = COLOR_WORN;
 
-    string name = llUnescapeURL(llJsonGetValue(gj_worn_info, [skey, JSON_NAME]));
-    llSetLinkPrimitiveParamsFast(
-        (integer)llJsonGetValue(gj_worn_info, [skey, JSON_TEXT]), 
-        [ PRIM_TEXT, llGetSubString(name, 0, 15), color, 1 ]
-    );
+    
+    string name = llJsonGetValue(obj, (list)JSON_NAME);
+    llSetLinkPrimitiveParamsFast(LINK_THIS,
+    [ 
+        PRIM_LINK_TARGET, (integer)llJsonGetValue(obj, (list)JSON_TEXT),
+        PRIM_TEXT, llGetSubString(llUnescapeURL(name), 0, 15), color, 1,
+        PRIM_DESC, name,
+
+        PRIM_LINK_TARGET, (integer)llJsonGetValue(obj, (list)JSON_BUTTON),
+        PRIM_DESC, name
+    ]);
 }
 
 open(integer open)
 {
     list ldata;
-    gi_flag = (gi_flag & ~OPEN) | (-bool(open) & OPEN);
+    float time;
     if (open)
     {
-        llSetLinkPrimitiveParamsFast(LINK_ROOT, llList2List(gl_open_params, 0, ~-PARAMS_SLIDE * gi_fold_numb));
-        integer it;
-        for (;it < gi_fold_numb; ++it)
-            set_text(JSON_KEY + (string)it);
+        llSetLinkPrimitiveParamsFast(LINK_ROOT, 
+            llList2List(gl_open_params, 0, ~-PARAMS_SLIDE * gi_fold_numb)
+        );
 
-        gi_flag = gi_flag | RLV_DELAY;
-        llSetTimerEvent(RLV_CMD_DELAY);
+        integer len = llGetListLength(gj_worn_info);
+        while (len) set_text(--len);
+        
+        gi_flag = gi_flag | RLV_DELAY | OPEN;
+        time = RLV_CMD_DELAY;
     }
     else 
     {
@@ -167,7 +185,12 @@ open(integer open)
             PRIM_SIZE, ZERO_VECTOR,
             PRIM_TEXT, "", ZERO_VECTOR, 0
         ]);
+
+        gi_flag = (gi_flag & ~OPEN) | RLV_GET_FOLDERS;
+        send_rlv_cmd("@getinv:" + gs_root_path + "=" + gs_channel);
+        time = 60.0;
     }
+    llSetTimerEvent(time);
 }
 
 lock (integer lock) 
@@ -190,24 +213,23 @@ lock (integer lock)
     llPlaySound( sound, SOUND_VOLUME);
 }
 
-string data_by_folder(string folder) 
+integer data_by_folder(string folder) 
 {
     folder = json_escape(folder);
-
-    integer it;
-    for (;it < gi_fold_numb; ++it)
+    integer len = gi_fold_numb;
+    while (len)
     {
-        string skey = JSON_KEY + (string)it;
-        if (llJsonGetValue(gj_worn_info, [skey, JSON_NAME]) == folder)
-            return skey;
+        string obj = llList2String(gj_worn_info, --len);
+        if (llJsonGetValue(obj, (list)JSON_NAME) == folder)
+            return len;
     }
 
-    return "";
+    return -1;
 }
 
 stat_up()
 {
-    gi_flag = (gi_flag & ~(ATTACHED | ATTACH_BOTTOM | RLV_LOGGED | LOCK | OPEN)) | (-bool(gi_att_point) & ATTACHED);
+    gi_flag = (gi_flag & ~(ATTACH_BOTTOM | LOCK | OPEN)) | (-bool(gi_att_point) & ATTACHED);
     
     vector pos = llGetLocalPos();
     float root_half = (gv_root_size.y * 0.5);
@@ -282,7 +304,7 @@ stat_up()
 
     gi_login_try = 0;
     gi_flag = gi_flag | RLV_LOGGIN;
-    llOwnerSay("@versionnew=" + gs_channel);
+    send_rlv_cmd("@versionnew=" + gs_channel);
     llSetTimerEvent(5);
 }
 
@@ -292,17 +314,6 @@ default
     state_entry()
     {
         llSetTimerEvent(0);
-        gj_worn_info = "";
-        integer it;
-        for (; it < 20; ++it)
-        {
-            string skey = JSON_KEY + (string)it;
-            gj_worn_info = llJsonSetValue(gj_worn_info, [skey, JSON_NAME], "");
-            gj_worn_info = llJsonSetValue(gj_worn_info, [skey, JSON_WORN], "0");
-            gj_worn_info = llJsonSetValue(gj_worn_info, [skey, JSON_BUTTON], (string)((it << 1) + 2));
-            gj_worn_info = llJsonSetValue(gj_worn_info, [skey, JSON_TEXT], (string)((it << 1) + 3));
-        }
-
         gi_att_point = llGetAttached();
         if (!gi_att_point) state off;
 
@@ -325,8 +336,12 @@ default
                 llSleep(15);
             stat_up();
         }
-        else 
+        else
+        {
+            gi_flag = gi_flag & ~(ATTACHED | RLV_LOGGED);
             llOwnerSay("@clear");
+        } 
+            
         gs_wearer = id;
     }
 
@@ -363,14 +378,20 @@ default
             gi_flag = gi_flag & ~RLV_GET_FOLDERS | RLV_GET_WERABLE;
             list folds = llListSort(llList2List(llParseString2List(message, (list)",", []), 0, 20), 1, TRUE);
 
-            integer len = llGetListLength(folds);
-            gi_fold_numb = len;
-            while(~--len)
-            {
-                string name = json_escape(llList2String(folds, len));
-                gj_worn_info = llJsonSetValue(gj_worn_info, [JSON_KEY + (string)len, JSON_NAME], name);
-            }
+            gi_fold_numb = llGetListLength(folds);
 
+
+            gj_worn_info = [];
+            integer it;
+            for (; it < gi_fold_numb; ++it)
+            {
+                string obj = llJsonSetValue("", (list)JSON_NAME, json_escape(llList2String(folds, it)));
+                obj = llJsonSetValue(obj, (list)JSON_WORN, "0");
+                obj = llJsonSetValue(obj, (list)JSON_BUTTON, (string)((it << 1) + 2));
+                obj = llJsonSetValue(obj, (list)JSON_TEXT, (string)((it << 1) + 3));
+                gj_worn_info += obj;
+            }
+            
             msg = "@getinvworn:" + gs_root_path + "=" + gs_channel;
             time = 60.0;
         }
@@ -382,7 +403,8 @@ default
             time = 1;
         }
 
-        if (msg) llOwnerSay(msg);
+            
+        if (msg) send_rlv_cmd(msg);
         if (time) llSetTimerEvent(time);
         else llListenControl(gi_listen_handle, FALSE);
     }
@@ -395,23 +417,22 @@ default
             open(!(gi_flag & OPEN));
         else if (str == "folder")
         {
+            if (gi_flag & (RLV_GET_FOLDERS | RLV_GET_WERABLE)) return;
             if (!llGetListLength(gl_worn_info)) return;
 
-            string sdata = llList2String(gl_worn_info, 1);
-            string worn = (string)(bool(~llSubStringIndex(sdata, "2") || ~llSubStringIndex(sdata, "3")));
-            string skey = data_by_folder(llList2String(gl_worn_info, 0));
+            integer index = data_by_folder(llList2String(gl_worn_info, 0));
 
-            if (skey == "")
+            if (~index)
             {
-                llShout(DEBUG_CHANNEL, "ERROR: unknow folder: " + llList2String(gl_worn_info, 0));
-                return;
-            }
+                string sdata = llList2String(gl_worn_info, 1);
+                string worn = (string)(bool(~llSubStringIndex(sdata, "2") || ~llSubStringIndex(sdata, "3")));
 
-            if (llJsonGetValue(gj_worn_info, [skey, JSON_WORN]) != worn) 
-            {
-                gj_worn_info = llJsonSetValue(gj_worn_info, [skey, JSON_WORN], worn);
-                if (gi_flag & OPEN) 
-                    set_text(skey);
+                string obj = llList2String(gj_worn_info, index);
+                if (llJsonGetValue(obj, (list)JSON_WORN) != worn) 
+                {
+                    gj_worn_info = llListReplaceList(gj_worn_info, (list)llJsonSetValue(obj, (list)JSON_WORN, worn), index, index);
+                    if (gi_flag & OPEN) set_text(index);
+                }
             }
 
             gl_worn_info = llDeleteSubList(gl_worn_info, 0, 1);
@@ -448,7 +469,7 @@ default
         }
 
         if (msg)
-            llOwnerSay(msg);
+            send_rlv_cmd(msg);
     }
 
     touch_start( integer num_detected )
@@ -553,13 +574,15 @@ default
             else
                 params += [ PRIM_TEXTURE, side, TEXTURE_UUID, DOWN_NORMAL_SCALE, DOWN_NORMAL_OFFSET, 0 ];
 
-            string skey = llList2String(llGetLinkPrimitiveParams(link, (list)PRIM_DESC), 0);
-            if (llJsonGetValue(gj_worn_info, [skey, JSON_WORN]) == "0")
+            string name = llList2String(llGetLinkPrimitiveParams(link, (list)PRIM_DESC), 0);
+            string obj = llList2String(gj_worn_info, data_by_folder(name));
+
+            if (llJsonGetValue(obj, (list)JSON_WORN) == "0")
                 msg = "@attachallover:";
             else
                 msg = "@detachall:";
             
-            msg += gs_root_path + "/" + llUnescapeURL(llJsonGetValue(gj_worn_info, [skey, JSON_NAME])) + "=force";
+            msg += gs_root_path + "/" + llUnescapeURL(llJsonGetValue(obj, (list)JSON_NAME)) + "=force";
             gs_reapeat = msg;
             gi_flag = gi_flag | RLV_REPEAT;
             llSetTimerEvent(RLV_CMD_DELAY);
@@ -573,12 +596,8 @@ default
         if (params) 
             llSetLinkPrimitiveParamsFast(link, params);
 
-        if (msg) 
-        {
-            llListenControl(gi_listen_handle, TRUE);
-            llSleep(TIMER_MIN_TIME);
-            llOwnerSay(msg);
-        }
+        if (msg)
+            send_rlv_cmd(msg);
 
         
     }
