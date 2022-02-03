@@ -14,6 +14,8 @@ integer gi_flag;
 #define RLV_REPEAT 0x200
 #define RLV_DELAY 0x400
 
+#define RLV_CMD_DELAY 0.5
+
 #define LOCK_SOUND "dec9fb53-0fef-29ae-a21d-b3047525d312"
 #define UNLOCK_SOUND "82fa6d06-b494-f97c-2908-84009380c8d1"
 #define CLICK_PRESS_SOUND "f231c001-cf12-340b-799a-6db2d8929f58"
@@ -154,7 +156,7 @@ open(integer open)
             set_text(JSON_KEY + (string)it);
 
         gi_flag = gi_flag | RLV_DELAY;
-        llSetTimerEvent(0.3);
+        llSetTimerEvent(RLV_CMD_DELAY);
     }
     else 
     {
@@ -560,7 +562,7 @@ default
             msg += gs_root_path + "/" + llUnescapeURL(llJsonGetValue(gj_worn_info, [skey, JSON_NAME])) + "=force";
             gs_reapeat = msg;
             gi_flag = gi_flag | RLV_REPEAT;
-            llSetTimerEvent(0.3);
+            llSetTimerEvent(RLV_CMD_DELAY);
             
         }
 
