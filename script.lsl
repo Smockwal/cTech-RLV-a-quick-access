@@ -3,16 +3,21 @@
 
 integer gi_flag;
 #define ATTACHED 0x1
-#define RLV_LOGGIN 0x2
-#define RLV_LOGGED 0x4
-#define RLV_GET_FOLDER 0x8
-#define RLV_GET_FOLDERS 0x10
-#define RLV_GET_WERABLE 0x20 
-#define LOCK 0x40
-#define OPEN 0x80
-#define ATTACH_BOTTOM 0x100
+#define ATTACH_BOTTOM 0x2
+#define LOCK 0x4
+#define OPEN 0x8
+
+
+#define RLV_LOGGIN 0x10
+#define RLV_LOGGED 0x20
+#define RLV_GET_FOLDER 0x40
+#define RLV_GET_FOLDERS 0x80
+#define RLV_GET_WERABLE 0x100 
 #define RLV_REPEAT 0x200
 #define RLV_DELAY 0x400
+// RLV_GET_FOLDER | RLV_GET_FOLDERS | RLV_GET_WERABLE | RLV_REPEAT | RLV_DELAY
+#define RLV_ALL_STEP 0x7C0
+
 
 #define RLV_CMD_DELAY 0.5
 
@@ -310,7 +315,7 @@ stat_up()
     gi_listen_handle = llListen(channel, llKey2Name(gs_wearer), gs_wearer, "");
 
     gi_login_try = 0;
-    gi_flag = gi_flag | RLV_LOGGIN;
+    gi_flag = (gi_flag & ~RLV_ALL_STEP) | RLV_LOGGIN;
     send_rlv_cmd("@versionnew=" + gs_channel);
     llSetTimerEvent(5);
 }
@@ -369,22 +374,23 @@ default
         {
             if(!llSubStringIndex(message, "RestrainedLove viewer ")) 
             {
+                
+                gi_flag = (gi_flag & ~RLV_LOGGIN) | (RLV_LOGGED | RLV_GET_FOLDER);
                 msg = "@getpath:" + (string)llGetKey() + "=" + gs_channel;
                 lock(TRUE);
-                gi_flag = (gi_flag & ~RLV_LOGGIN) | (RLV_LOGGED | RLV_GET_FOLDER);
                 time = 60.0;
             }
         } 
         else if ((gi_flag & (RLV_LOGGED | RLV_GET_FOLDER)) == (RLV_LOGGED | RLV_GET_FOLDER))
         {
             gs_root_path = message;
-            gi_flag = (gi_flag & ~RLV_GET_FOLDER) | RLV_GET_FOLDERS;
+            gi_flag = (gi_flag & ~RLV_ALL_STEP) | RLV_GET_FOLDERS;
             msg = "@getinv:" + gs_root_path + "=" + gs_channel;
             time = 60.0;
         }
         else if ((gi_flag & (RLV_LOGGED | RLV_GET_FOLDERS)) == (RLV_LOGGED | RLV_GET_FOLDERS))
         {
-            gi_flag = gi_flag & ~RLV_GET_FOLDERS | RLV_GET_WERABLE;
+            gi_flag = (gi_flag & ~RLV_ALL_STEP) | RLV_GET_WERABLE;
             list folds = llListSort(llList2List(llParseString2List(message, (list)",", []), 0, 20), 1, TRUE);
 
             gi_fold_numb = llGetListLength(folds);
@@ -463,11 +469,11 @@ default
         else if (gi_flag & RLV_REPEAT) 
         {
             msg = (gs_reapeat = "") + gs_reapeat;
-            gi_flag = gi_flag & ~RLV_REPEAT | RLV_DELAY;
+            gi_flag = (gi_flag & ~RLV_ALL_STEP) | RLV_DELAY;
         }
         else if (gi_flag & RLV_DELAY) 
         {
-             gi_flag = gi_flag & ~RLV_DELAY | RLV_GET_WERABLE;
+             gi_flag = (gi_flag & ~RLV_ALL_STEP) | RLV_GET_WERABLE;
              msg = "@getinvworn:" + gs_root_path + "=" + gs_channel;
              llSetTimerEvent(60);
         }
