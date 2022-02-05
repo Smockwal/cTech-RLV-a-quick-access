@@ -20,6 +20,7 @@ integer gi_flag;
 
 
 #define RLV_CMD_DELAY 0.5
+#define RLV_VERSION_STR "RestrainedLove viewer "
 
 #define LOCK_SOUND "dec9fb53-0fef-29ae-a21d-b3047525d312"
 #define UNLOCK_SOUND "82fa6d06-b494-f97c-2908-84009380c8d1"
@@ -363,6 +364,7 @@ default
     {
 
         if (~gi_flag & ATTACHED) return;
+            
 #ifdef DEBUG
         llOwnerSay(message);
         print_flag();
@@ -372,7 +374,7 @@ default
         string msg;
         if (gi_flag & RLV_LOGGIN) 
         {
-            if(!llSubStringIndex(message, "RestrainedLove viewer ")) 
+            if(!llSubStringIndex(message, RLV_VERSION_STR)) 
             {
                 
                 gi_flag = (gi_flag & ~RLV_LOGGIN) | (RLV_LOGGED | RLV_GET_FOLDER);
@@ -390,6 +392,7 @@ default
         }
         else if ((gi_flag & (RLV_LOGGED | RLV_GET_FOLDERS)) == (RLV_LOGGED | RLV_GET_FOLDERS))
         {
+            if (!llSubStringIndex(message, "|")) return;
             gi_flag = (gi_flag & ~RLV_ALL_STEP) | RLV_GET_WERABLE;
             list folds = llListSort(llList2List(llParseString2List(message, (list)",", []), 0, 20), 1, TRUE);
 
@@ -412,6 +415,7 @@ default
         }
         else if ((gi_flag & (RLV_LOGGED | RLV_GET_WERABLE)) == (RLV_LOGGED | RLV_GET_WERABLE))
         {
+            if (llSubStringIndex(message, "|")) return;
             gl_worn_info = llList2List(llParseString2List(message, (list)"," + "|", []), 1, -1);
             gi_flag = gi_flag & ~RLV_GET_WERABLE;
             llMessageLinked(LINK_THIS, 0, "folder", "");
